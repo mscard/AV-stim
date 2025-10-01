@@ -117,10 +117,22 @@
     }
 
     toggleBtn.addEventListener('click', () => {
-      if (running) {
-        stopAV();
-      } else {
+      if (!running) {
+        // request fullscreen on Start
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+          document.documentElement.webkitRequestFullscreen(); // Safari
+        }
         startAV();
+      } else {
+        stopAV();
+        // exit fullscreen on Stop
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        }
       }
     });
   </script>
