@@ -25,12 +25,12 @@
       width: 100%;
       height: 100%;
       background: black;
-      z-index: 1; /* flash covers whole screen */
+      z-index: 1;
       transition: background 0.05s;
     }
     #controls {
       position: relative;
-      z-index: 2; /* controls float above flash */
+      z-index: 2;
       background: rgba(0,0,0,0.6);
       padding: 1em;
       border-radius: 0.5em;
@@ -50,22 +50,51 @@
 
   <script>
     const flash = document.getElementById('flash');
+    const controlsEl = document.getElementById('controls');
     const toggleBtn = document.getElementById('toggle');
     const freqInput = document.getElementById('freq');
     const dutyInput = document.getElementById('duty');
 
     let running = false;
-    let audioCtx, osc;
+    let audioCtx = null;
+    let osc = null;
 
-    function startAV() {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // --- Fullscreen helpers ---
+    function isFullscreen() {
+      return !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+    }
+
+    function requestFullscreenSafe() {
+      const el = document.documentElement;
+      if (el.requestFullscreen) return el.requestFullscreen();
+      if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+      return Promise.reject(new Error('Fullscreen API not supported'));
+    }
+
+    function exitFullscreenSafe() {
+      if (!isFullscreen()) return Promise.resolve();
+      try {
+        if (document.exitFullscreen) return document.exitFullscreen();
+        if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+      } catch (err) {
+        return Promise.resolve();
       }
+      return Promise.resolve();
+    }
+
+    // --- AV control ---
+    function startAV() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       running = true;
       toggleBtn.textContent = 'Stop';
 
-      const freq = parseFloat(freqInput.value);
-      const duty = parseFloat(dutyInput.value) / 100;
+      const freq = Math.max(1, parseFloat(freqInput.value) || 10);
+      const duty = Math.max(0.01, Math.min(0.99, (parseFloat(dutyInput.value) || 50) / 100));
       const period = 1000 / freq;
       const onTime = period * duty;
       const offTime = period - onTime;
@@ -75,19 +104,19 @@
       function cycle() {
         if (!running) return;
         if (!on) {
-          // Turn ON: flash + tone
           flash.style.background = 'white';
           osc = audioCtx.createOscillator();
           osc.type = 'square';
-          osc.frequency.value = 1000; // 1 kHz beep
+          osc.frequency.value = 1000;
           const gainNode = audioCtx.createGain();
           gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
           osc.connect(gainNode).connect(audioCtx.destination);
           osc.start();
+
           setTimeout(() => {
             if (osc) {
-              osc.stop();
-              osc.disconnect();
+              try { osc.stop(); } catch(e) {};
+              try { osc.disconnect(); } catch(e) {};
               osc = null;
             }
           }, onTime);
@@ -95,7 +124,6 @@
           on = true;
           setTimeout(cycle, onTime);
         } else {
-          // Turn OFF: dark screen
           flash.style.background = 'black';
           on = false;
           setTimeout(cycle, offTime);
@@ -110,37 +138,78 @@
       toggleBtn.textContent = 'Start';
       flash.style.background = 'black';
       if (osc) {
-        osc.stop();
-        osc.disconnect();
+        try { osc.stop(); } catch(e) {};
+        try { osc.disconnect(); } catch(e) {};
         osc = null;
       }
     }
 
-    toggleBtn.addEventListener('click', () => {
+    // --- UI behavior: Start/Stop + fullscreen logic ---
+    function handleToggle() {
       if (!running) {
-        // request fullscreen first
-        let fsPromise;
-        if (document.documentElement.requestFullscreen) {
-          fsPromise = document.documentElement.requestFullscreen();
-        } else if (document.documentElement.webkitRequestFullscreen) {
-          fsPromise = document.documentElement.webkitRequestFullscreen(); // Safari
-        }
+        if (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) {
+          let fsPromise;
+          try {
+            fsPromise = requestFullscreenSafe();
+          } catch (err) {
+            console.warn('Fullscreen request threw error:', err);
+            fsPromise = Promise.reject(err);
+          }
 
-        // after fullscreen is granted (or fails), start stimulation
-        Promise.resolve(fsPromise).finally(() => {
+          fsPromise
+            .then(() => {
+              controlsEl.style.display = 'none';
+            })
+            .catch((err) => {
+              console.warn('Unable to enter fullscreen:', err);
+            })
+            .finally(() => {
+              startAV();
+            });
+        } else {
           startAV();
-        });
+        }
       } else {
         stopAV();
-        // exit fullscreen when stopping
-        if (document.exitFullscreen) {
-          document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-          document.webkitExitFullscreen();
+        if (!isFullscreen()) {
+          controlsEl.style.display = 'block';
         }
+        exitFullscreenSafe().catch(() => {});
+      }
+    }
+
+    toggleBtn.addEventListener('click', handleToggle);
+
+    // Spacebar toggle
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault(); // Prevent page scroll
+        handleToggle();
+      }
+    });
+
+    // Show controls and stop stimulation when fullscreen is exited (Esc key)
+    function onFullScreenChange() {
+      if (!isFullscreen()) {
+        controlsEl.style.display = 'block';
+        stopAV();
+      } else {
+        controlsEl.style.display = 'none';
+      }
+    }
+
+    document.addEventListener('fullscreenchange', onFullScreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullScreenChange);
+    document.addEventListener('mozfullscreenchange', onFullScreenChange);
+    document.addEventListener('MSFullscreenChange', onFullScreenChange);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && running) {
+        stopAV();
       }
     });
   </script>
 </body>
 </html>
+
 
