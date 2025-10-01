@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>10 Hz AV Stim</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      background: black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+      color: white;
+      flex-direction: column;
+    }
+    #flash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      z-index: 1; /* flash covers whole screen */
+      transition: background 0.05s;
+    }
+    #controls {
+      position: relative;
+      z-index: 2; /* controls float above flash */
+      background: rgba(0,0,0,0.6);
+      padding: 1em;
+      border-radius: 0.5em;
+    }
+    label, button {
+      margin: 0.5em;
+    }
+  </style>
+</head>
+<body>
+  <div id="flash"></div>
+  <div id="controls">
+    <label>Frequency (Hz): <input type="number" id="freq" value="10" min="1" max="60"></label>
+    <label>Duty (%): <input type="number" id="duty" value="50" min="1" max="99"></label>
+    <button id="toggle">Start</button>
+  </div>
+
+  <script>
+    const flash = document.getElementById('flash');
+    const toggleBtn = document.getElementById('toggle');
+    const freqInput = document.getElementById('freq');
+    const dutyInput = document.getElementById('duty');
+
+    let running = false;
+    let audioCtx, osc;
+
+    function startAV() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      running = true;
+      toggleBtn.textContent = 'Stop';
+
+      const freq = parseFloat(freqInput.value);
+      const duty = parseFloat(dutyInput.value) / 100;
+      const period = 1000 / freq;
+      const onTime = period * duty;
+      const offTime = period - onTime;
+
+      let on = false;
+
+      function cycle() {
+        if (!running) return;
+        if (!on) {
+          // Turn ON: flash + tone
+          flash.style.background = 'white';
+          osc = audioCtx.createOscillator();
+          osc.type = 'square';
+          osc.frequency.value = 1000; // 1 kHz beep
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+          osc.connect(gainNode).connect(audioCtx.destination);
+          osc.start();
+          setTimeout(() => {
+            if (osc) {
+              osc.stop();
+              osc.disconnect();
+              osc = null;
+            }
+          }, onTime);
+
+          on = true;
+          setTimeout(cycle, onTime);
+        } else {
+          // Turn OFF: dark screen
+          flash.style.background = 'black';
+          on = false;
+          setTimeout(cycle, offTime);
+        }
+      }
+
+      cycle();
+    }
+
+    function stopAV() {
+      running = false;
+      toggleBtn.textContent = 'Start';
+      flash.style.background = 'black';
+      if (osc) {
+        osc.stop();
+        osc.disconnect();
+        osc = null;
+      }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      if (running) {
+        stopAV();
+      } else {
+        startAV();
+      }
+    });
+  </script>
+</body>
+</html>
