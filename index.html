@@ -118,16 +118,21 @@
 
     toggleBtn.addEventListener('click', () => {
       if (!running) {
-        // request fullscreen on Start
+        // request fullscreen first
+        let fsPromise;
         if (document.documentElement.requestFullscreen) {
-          document.documentElement.requestFullscreen();
+          fsPromise = document.documentElement.requestFullscreen();
         } else if (document.documentElement.webkitRequestFullscreen) {
-          document.documentElement.webkitRequestFullscreen(); // Safari
+          fsPromise = document.documentElement.webkitRequestFullscreen(); // Safari
         }
-        startAV();
+
+        // after fullscreen is granted (or fails), start stimulation
+        Promise.resolve(fsPromise).finally(() => {
+          startAV();
+        });
       } else {
         stopAV();
-        // exit fullscreen on Stop
+        // exit fullscreen when stopping
         if (document.exitFullscreen) {
           document.exitFullscreen();
         } else if (document.webkitExitFullscreen) {
@@ -138,3 +143,4 @@
   </script>
 </body>
 </html>
+
