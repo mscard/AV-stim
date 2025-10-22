@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>10 Hz AV Stim - iOS Optimized</title>
+  <title>10 Hz AV Stim - iOS Fixed</title>
   <style>
     html, body {
       margin: 0;
@@ -29,11 +29,10 @@
       height: 100vh;
       background: black;
       z-index: 1;
-      transition: background 0.02s;
     }
     #controls {
       z-index: 2;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0,0,0,0.8);
       padding: 1em 2em;
       border-radius: 1em;
       text-align: center;
@@ -76,42 +75,44 @@
     let running = false;
     let audioCtx = null;
     let osc = null;
-    let timer = null;
+    let gainNode = null;
+    let stimInterval = null;
 
     function startAV() {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-
       running = true;
       controls.style.display = 'none';
+
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
 
       const freq = Math.max(1, parseFloat(freqInput.value) || 10);
       const duty = Math.max(0.01, Math.min(0.99, (parseFloat(dutyInput.value) || 50) / 100));
       const period = 1000 / freq;
       const onTime = period * duty;
-      const offTime = period - onTime;
 
-      const gainNode = audioCtx.createGain();
+      // setup audio
+      gainNode = audioCtx.createGain();
       gainNode.gain.value = 0;
       gainNode.connect(audioCtx.destination);
 
       osc = audioCtx.createOscillator();
       osc.type = 'square';
-      osc.frequency.value = 1000; // 1 kHz beep tone
+      osc.frequency.value = 1000;
       osc.connect(gainNode);
       osc.start();
 
+      // visual + audio loop
       function cycle() {
         if (!running) return;
         flash.style.background = 'white';
         gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
-
         setTimeout(() => {
           flash.style.background = 'black';
           gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-          setTimeout(cycle, offTime);
         }, onTime);
       }
+
+      stimInterval = setInterval(cycle, period);
       cycle();
     }
 
@@ -119,29 +120,37 @@
       running = false;
       controls.style.display = 'block';
       flash.style.background = 'black';
+      if (stimInterval) clearInterval(stimInterval);
       if (osc) {
         try { osc.stop(); osc.disconnect(); } catch(e) {}
         osc = null;
       }
-      if (timer) clearTimeout(timer);
+      if (gainNode) {
+        try { gainNode.disconnect(); } catch(e) {}
+        gainNode = null;
+      }
     }
 
     function handleStart() {
-      if (!running) startAV();
-      else stopAV();
+      if (!running) {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx.resume().then(() => {
+          startAV();
+        }).catch(err => {
+          console.log('Audio unlock failed', err);
+        });
+      } else {
+        stopAV();
+      }
     }
 
-    // Use touch and pointer events for iOS reliability
-    toggle.addEventListener('touchstart', handleStart);
-    toggle.addEventListener('pointerdown', handleStart);
+    // Works for both touch and click on iOS
+    toggle.onclick = handleStart;
+    toggle.ontouchend = handleStart;
 
-    flash.addEventListener('touchstart', () => { if (running) stopAV(); });
-    flash.addEventListener('pointerdown', () => { if (running) stopAV(); });
-
-    // Prevent sleep and ensure audio stays active
-    document.addEventListener('touchstart', () => {
-      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    }, { passive: true });
+    // Tap anywhere to stop
+    flash.onclick = () => { if (running) stopAV(); };
+    flash.ontouchend = () => { if (running) stopAV(); };
   </script>
 </body>
 </html>
