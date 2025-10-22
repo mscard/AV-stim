@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>10 Hz AV Stim - iPad Version</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+      color: white;
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #flash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      transition: background 0.02s;
+      z-index: 1;
+    }
+    #controls {
+      z-index: 2;
+      background: rgba(0,0,0,0.6);
+      padding: 1em 2em;
+      border-radius: 1em;
+      text-align: center;
+    }
+    button {
+      font-size: 1.5em;
+      padding: 0.5em 1.2em;
+      border-radius: 0.5em;
+      border: none;
+      background: #00bcd4;
+      color: white;
+    }
+    button:active {
+      background: #0097a7;
+    }
+  </style>
+</head>
+<body>
+  <div id="flash"></div>
+  <div id="controls">
+    <h2>iPad AV Stimulation</h2>
+    <p>Tap start to begin flicker + beep</p>
+    <label>Frequency (Hz): <input type="number" id="freq" value="10" min="1" max="60" style="font-size:1em;"></label><br><br>
+    <label>Duty (%): <input type="number" id="duty" value="50" min="1" max="99" style="font-size:1em;"></label><br><br>
+    <button id="toggle">Start</button>
+  </div>
+
+  <script>
+    const flash = document.getElementById('flash');
+    const controls = document.getElementById('controls');
+    const toggle = document.getElementById('toggle');
+    const freqInput = document.getElementById('freq');
+    const dutyInput = document.getElementById('duty');
+
+    let running = false;
+    let audioCtx = null;
+    let osc = null;
+
+    function startAV() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      running = true;
+      controls.style.display = 'none';
+      const freq = Math.max(1, parseFloat(freqInput.value) || 10);
+      const duty = Math.max(0.01, Math.min(0.99, (parseFloat(dutyInput.value) || 50) / 100));
+      const period = 1000 / freq;
+      const onTime = period * duty;
+      const offTime = period - onTime;
+
+      function cycle(on) {
+        if (!running) return;
+        if (on) {
+          flash.style.background = 'white';
+          osc = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          osc.type = 'square';
+          osc.frequency.value = 1000;
+          gainNode.gain.value = 0.2;
+          osc.connect(gainNode).connect(audioCtx.destination);
+          osc.start();
+          setTimeout(() => {
+            try { osc.stop(); osc.disconnect(); } catch(e) {}
+            osc = null;
+            flash.style.background = 'black';
+            setTimeout(() => cycle(true), offTime);
+          }, onTime);
+        }
+      }
+      cycle(true);
+    }
+
+    function stopAV() {
+      running = false;
+      controls.style.display = 'block';
+      flash.style.background = 'black';
+      if (osc) {
+        try { osc.stop(); osc.disconnect(); } catch(e) {}
+        osc = null;
+      }
+    }
+
+    toggle.addEventListener('click', () => {
+      if (!running) {
+        startAV();
+      } else {
+        stopAV();
+      }
+    });
+
+    // Tap anywhere to stop
+    flash.addEventListener('click', () => {
+      if (running) stopAV();
+    });
+
+    // Prevent sleep
+    document.addEventListener('touchstart', () => {
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }, { passive: true });
+  </script>
+</body>
+</html>
