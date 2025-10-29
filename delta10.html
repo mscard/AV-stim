@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>10 Hz Bursts for 10 Minutes</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+      color: black;
+    }
+    #flash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: white;
+      z-index: 1;
+    }
+    #controls {
+      z-index: 2;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      padding: 1.5em 2em;
+      border-radius: 1em;
+      text-align: center;
+    }
+    button {
+      font-size: 1.2em;
+      padding: 0.5em 1.2em;
+      border: none;
+      border-radius: 0.5em;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover { background: #0056b3; }
+  </style>
+</head>
+<body>
+  <div id="flash"></div>
+  <div id="controls">
+    <h2>10 Hz Audio–Visual Stimulation</h2>
+    <p>Pattern: 250 ms 10 Hz burst → 250 ms rest, repeated for 10 minutes</p>
+    <button id="toggle">Start</button>
+  </div>
+
+  <script>
+    const flash = document.getElementById('flash');
+    const controls = document.getElementById('controls');
+    const toggle = document.getElementById('toggle');
+
+    let running = false;
+    let audioCtx = null;
+    let gainNode = null;
+    let osc = null;
+    let mainTimer = null;
+    let burstTimer = null;
+
+    const totalDuration = 10 * 60 * 1000; // 10 minutes
+    const burstDuration = 250; // ms
+    const restDuration = 250; // ms between bursts
+    const pulseFreq = 10; // 10 Hz
+
+    function startAV() {
+      running = true;
+      controls.style.display = 'none';
+
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0;
+      gainNode.connect(audioCtx.destination);
+
+      osc = audioCtx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = 1000;
+      osc.connect(gainNode);
+      osc.start();
+
+      const period = 1000 / pulseFreq;
+      const onTime = period / 2;
+
+      function runBurst() {
+        if (!running) return;
+        const burstEnd = Date.now() + burstDuration;
+        const cycle = setInterval(() => {
+          if (Date.now() >= burstEnd || !running) {
+            clearInterval(cycle);
+            flash.style.background = 'white';
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            burstTimer = setTimeout(runBurst, restDuration);
+          } else {
+            flash.style.background = 'black';
+            gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            setTimeout(() => {
+              flash.style.background = 'white';
+              gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            }, onTime);
+          }
+        }, period);
+      }
+
+      runBurst();
+
+      mainTimer = setTimeout(() => {
+        stopAV();
+        alert('10 minute stimulation complete');
+      }, totalDuration);
+    }
+
+    function stopAV() {
+      running = false;
+      flash.style.background = 'white';
+      controls.style.display = 'block';
+      if (mainTimer) clearTimeout(mainTimer);
+      if (burstTimer) clearTimeout(burstTimer);
+      if (osc) { try { osc.stop(); osc.disconnect(); } catch(e) {} osc = null; }
+      if (gainNode) { try { gainNode.disconnect(); } catch(e) {} gainNode = null; }
+    }
+
+    toggle.addEventListener('click', () => {
+      if (!running) {
+        startAV();
+      } else {
+        stopAV();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' && running) {
+        stopAV();
+      }
+    });
+  </script>
+</body>
+</html>
